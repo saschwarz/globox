@@ -331,21 +331,17 @@ class Annotation:
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
         image_size: Optional["tuple[int, int]"] = None,
         conf_last: bool = False,
-        prefer_polygon: bool = False,
     ) -> str:
         image_size = image_size or self.image_size
 
         if image_size is None:
             raise ValueError(
-                "Either `image_size` should be provided as an argument or stored in the Annotation object for conversion to YOLO format."
+                "Either `image_size` shoud be provided as argument or stored in the Annotation object for conversion to YOLO format."
             )
 
         return "\n".join(
             box.to_yolo(
-                image_size=image_size,
-                label_to_id=label_to_id,
-                conf_last=conf_last,
-                prefer_polygon=prefer_polygon,
+                image_size=image_size, label_to_id=label_to_id, conf_last=conf_last
             )
             for box in self.boxes
         )
@@ -392,13 +388,8 @@ class Annotation:
         *,
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
         image_size: Optional["tuple[int, int]"] = None,
-        prefer_polygon: bool = False,
     ) -> str:
-        return self.to_yolo_v5(
-            label_to_id=label_to_id,
-            image_size=image_size,
-            prefer_polygon=prefer_polygon,
-        )
+        return self.to_yolo_v5(label_to_id=label_to_id, image_size=image_size)
 
     def save_txt(
         self,
@@ -430,13 +421,9 @@ class Annotation:
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
         image_size: Optional["tuple[int, int]"] = None,
         conf_last: bool = False,
-        prefer_polygon: bool = False,
     ):
         content = self._to_yolo(
-            label_to_id=label_to_id,
-            image_size=image_size,
-            conf_last=conf_last,
-            prefer_polygon=prefer_polygon,
+            label_to_id=label_to_id, image_size=image_size, conf_last=conf_last
         )
 
         with open_atomic(path, "w") as f:
@@ -449,7 +436,6 @@ class Annotation:
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
         image_size: Optional["tuple[int, int]"] = None,
         conf_last: bool = False,
-        prefer_polygon: bool = False,
     ):
         warn(
             "'save_yolo' is deprecated. Please use `save_yolo_darknet` or `save_yolo_v5`",
@@ -458,11 +444,7 @@ class Annotation:
         )
 
         self._save_yolo(
-            path,
-            label_to_id=label_to_id,
-            image_size=image_size,
-            conf_last=conf_last,
-            prefer_polygon=prefer_polygon,
+            path, label_to_id=label_to_id, image_size=image_size, conf_last=conf_last
         )
 
     def save_yolo_darknet(

@@ -1,7 +1,7 @@
 from .errors import ParsingError
 
 from enum import Enum, auto
-from typing import List, Mapping, Union, Tuple, Optional, Any
+from typing import Mapping, Union, Tuple, Optional, Any
 import xml.etree.ElementTree as et
 
 
@@ -51,7 +51,7 @@ class BoundingBox:
     Use the '.create(...)' classmethod to create a BoundingBox using a different coordinate
     system."""
 
-    __slots__ = ("label", "_xmin", "_ymin", "_xmax", "_ymax", "_polygon", "_confidence")
+    __slots__ = ("label", "_xmin", "_ymin", "_xmax", "_ymax", "_confidence")
 
     def __init__(
         self,
@@ -61,7 +61,6 @@ class BoundingBox:
         ymin: float,
         xmax: float,
         ymax: float,
-        polygon: Optional[List[float]] = None,
         confidence: Optional[float] = None,
     ) -> None:
         assert xmin <= xmax, "`xmax` must be greater than `xmin`."
@@ -77,7 +76,6 @@ class BoundingBox:
         self._ymin = ymin
         self._xmax = xmax
         self._ymax = ymax
-        self._polygon = polygon
         self._confidence = confidence
 
     @property
@@ -218,10 +216,6 @@ class BoundingBox:
     def xywh(self) -> Coordinates:
         return self.xmid, self.ymid, self.width, self.height
 
-    @property
-    def polygon(self) -> Optional[List[float]]:
-        return self._polygon
-
     @classmethod
     def create(
         cls,
@@ -232,22 +226,13 @@ class BoundingBox:
         box_format=BoxFormat.LTRB,
         relative=False,
         image_size: Optional["tuple[int, int]"] = None,
-        polygon: Optional[List[float]] = None,
     ) -> "BoundingBox":
         if relative:
             assert (
                 image_size is not None
             ), "For relative coordinates `image_size` should be provided."
             coords = cls.rel_to_abs(coords, image_size)
-            if polygon is not None:
-                # group polygon coordinates into pairs,
-                # multiply first by image width and second by image height
-                # and flatten the list
-                polygon = [
-                    (x * image_size[0], y * image_size[1])
-                    for x, y in zip(polygon[::2], polygon[1::2])
-                ]
-                polygon = [x for pair in polygon for x in pair]
+
         if box_format is BoxFormat.LTWH:
             coords = cls.ltwh_to_ltrb(coords)
         elif box_format is BoxFormat.XYWH:
@@ -266,7 +251,6 @@ class BoundingBox:
             xmax=xmax,
             ymax=ymax,
             confidence=confidence,
-            polygon=polygon,
         )
 
     @staticmethod
@@ -280,8 +264,7 @@ class BoundingBox:
         conf_last: bool = False,
     ) -> "BoundingBox":
         values = string.strip().split(separator)
-        polygon = None
-        coords = []
+
         if len(values) == 5:
             label, *coords = values
             confidence = None
@@ -290,15 +273,6 @@ class BoundingBox:
                 label, *coords, confidence = values
             else:
                 label, confidence, *coords = values
-        elif len(values) > 6:
-            # assume no confidence value and this is a segmentation polygon
-            confidence = None
-            label, *polygon = values
-            polygon = [float(x) for x in polygon]
-            # generate bounding box from polygon points in BoxFormat.LTRB
-            x_vals, y_vals = polygon[::2], polygon[1::2]
-            coords = [min(x_vals), min(y_vals), max(x_vals), max(y_vals)]
-            box_format = BoxFormat.LTRB
         else:
             raise ParsingError(f"Syntax error in txt annotation file.")
 
@@ -316,7 +290,6 @@ class BoundingBox:
             box_format=box_format,
             relative=relative,
             image_size=image_size,
-            polygon=polygon,
         )
 
     @staticmethod
@@ -439,7 +412,6 @@ class BoundingBox:
         image_size: Optional["tuple[int, int]"] = None,
         separator: str = " ",
         conf_last: bool = False,
-        prefer_polygon: bool = False,
     ) -> str:
         assert (
             "\n" not in separator
@@ -454,22 +426,11 @@ class BoundingBox:
         else:
             raise ValueError(f"Unknown BoxFormat '{box_format}'")
 
-        if prefer_polygon and self.polygon is not None:
-            coords = self.polygon
-
         if relative:
             assert (
                 image_size is not None
             ), "For relative coordinates, `image_size` should be provided."
-            if prefer_polygon and self.polygon:
-                coords = [
-                    (x / image_size[0], y / image_size[1])
-                    for x, y in zip(self.polygon[::2], self.polygon[1::2])
-                ]
-                # flatten the list
-                coords = [c for p in coords for c in p]
-            else:
-                coords = BoundingBox.abs_to_rel(coords, image_size)
+            coords = BoundingBox.abs_to_rel(coords, image_size)
 
         label = self.label
         if label_to_id is not None:
@@ -495,7 +456,6 @@ class BoundingBox:
         image_size: "tuple[int, int]",
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
         conf_last: bool = False,
-        prefer_polygon: bool = False,
     ) -> str:
         return self.to_txt(
             label_to_id=label_to_id,
@@ -504,7 +464,6 @@ class BoundingBox:
             image_size=image_size,
             separator=" ",
             conf_last=conf_last,
-            prefer_polygon=prefer_polygon,
         )
 
     def to_yolo_darknet(
@@ -522,13 +481,9 @@ class BoundingBox:
         *,
         image_size: "tuple[int, int]",
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
-        prefer_polygon: bool = False,
     ) -> str:
         return self.to_yolo(
-            image_size=image_size,
-            label_to_id=label_to_id,
-            conf_last=True,
-            prefer_polygon=prefer_polygon,
+            image_size=image_size, label_to_id=label_to_id, conf_last=True
         )
 
     def to_yolo_v7(
@@ -536,13 +491,8 @@ class BoundingBox:
         *,
         image_size: "tuple[int, int]",
         label_to_id: Optional[Mapping[str, Union[int, str]]] = None,
-        prefer_polygon: bool = True,
     ) -> str:
-        return self.to_yolo_v5(
-            image_size=image_size,
-            label_to_id=label_to_id,
-            prefer_polygon=prefer_polygon,
-        )
+        return self.to_yolo_v5(image_size=image_size, label_to_id=label_to_id)
 
     def to_labelme(self) -> dict:
         xmin, ymin, xmax, ymax = self.ltrb
